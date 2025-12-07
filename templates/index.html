@@ -136,7 +136,8 @@
     <main>
         <h2>Extract Text From DAR PDF</h2>
 
-        <form id="pdf-form" enctype="multipart/form-data">
+        <form id="pdfForm" action="/extract_pdf" method="POST" enctype="multipart/form-data">
+
 
             <div class="section">
                 <label for="pdf_file">Upload PDF File:</label>
@@ -159,7 +160,7 @@
                 </small>
             </div>
 
-            <button type="submit">Extract Text</button>
+            <button type="submit">Extract Text + Download CSV</button>
         </form>
 
         <div id="result-container">
