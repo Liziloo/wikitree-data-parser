@@ -1,82 +1,222 @@
-import tempfile
 import os
+import tempfile
+from typing import Dict, Any
+
 from flask import Blueprint, request, jsonify, current_app
-from werkzeug.datastructures import FileStorage
 
 from .pdf_to_text import extract_text_from_pdf
 
-bp = Blueprint("pdf", __name__)
+# ------------------------------------------------------------
+# Blueprint
+# ------------------------------------------------------------
 
-# Massachusetts offset: printed_page + 16 = pdf_page
-MASSACHUSETTS_OFFSET = 16
+pdf_bp = Blueprint("pdf_bp", __name__)
+
+# ------------------------------------------------------------
+# PRINTED → PDF PAGE MAPPING (YOU FILL THE NUMBERS)
+# ------------------------------------------------------------
+# For each section, set:
+#   "printed_start": the printed page number where that section begins
+#   "pdf_start":      the PDF page number where that same page appears
+#
+# Example (for Massachusetts, if you wish to pre-fill it):
+#   "Massachusetts": { "printed_start": 77, "pdf_start": 93 }
+#
+# Once these are set, resolve_pdf_page() will convert any printed page
+# to the correct PDF page automatically.
+
+CHAPTER_PAGE_MAP: Dict[str, Dict[str, Any]] = {
+    "Maine": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "New Hampshire": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Vermont": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Massachusetts": {
+        "printed_start": 77,  # e.g. 77
+        "pdf_start": 93,      # e.g. 93
+    },
+    "Rhode Island": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Connecticut": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "New York": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "New Jersey": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Pennsylvania": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Delaware": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Maryland": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Virginia": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "North Carolina": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "South Carolina": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Georgia": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "The Old Northwest": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+    "Miscellaneous Naval and Military Records": {
+        "printed_start": None,
+        "pdf_start": None,
+    },
+}
 
 
-@bp.route("/extract_pdf", methods=["POST"])
+def resolve_pdf_page(printed_page: int) -> int:
+    """
+    Convert a printed page number from the book into a PDF page number,
+    using CHAPTER_PAGE_MAP.
+
+    Rules:
+    - Only sections with both printed_start and pdf_start set are considered.
+    - Among those, we pick the section whose printed_start is the greatest
+      value <= the requested printed_page.
+    - That section defines the offset:
+        offset = pdf_start - printed_start
+        pdf_page = printed_page + offset
+    """
+    # Collect only configured chapters
+    configured = [
+        (name, info)
+        for name, info in CHAPTER_PAGE_MAP.items()
+        if info.get("printed_start") is not None and info.get("pdf_start") is not None
+    ]
+
+    if not configured:
+        raise ValueError("No chapter mappings have been configured yet.")
+
+    # Filter to chapters whose printed_start <= printed_page
+    candidates = [
+        (name, info)
+        for name, info in configured
+        if printed_page >= info["printed_start"]
+    ]
+
+    if not candidates:
+        raise ValueError("Printed page is before the first configured chapter.")
+
+    # Choose the chapter with the largest printed_start that is <= printed_page
+    chapter_name, info = max(candidates, key=lambda item: item[1]["printed_start"])
+
+    printed_start = info["printed_start"]
+    pdf_start = info["pdf_start"]
+
+    offset = pdf_start - printed_start
+    return printed_page + offset
+
+
+# ------------------------------------------------------------
+# Route: /extract_pdf
+# ------------------------------------------------------------
+
+@pdf_bp.route("/extract_pdf", methods=["POST"])
 def extract_pdf():
     """
-    Accepts a PDF upload + page selector and returns the extracted text.
-    Request fields:
-        - pdf_file: PDF upload
-        - mode: "pdf" or "printed"
-        - page: integer page number (printed or pdf)
+    Handle PDF upload + page selection and return extracted text.
+
+    Form fields expected:
+      - pdf_file: uploaded PDF file
+      - mode: "pdf" or "printed"
+      - page: page number (int)
+
+    Logic:
+      - If mode == "pdf": treat `page` as a PDF page number (1-based)
+      - If mode == "printed": treat `page` as a printed page number and
+                              convert using resolve_pdf_page()
     """
     try:
-        # ----------------------------------------------------
-        # Validate file upload
-        # ----------------------------------------------------
+        # ----------------------------------------
+        # Validate and fetch the uploaded PDF
+        # ----------------------------------------
         if "pdf_file" not in request.files:
-            return jsonify({"error": "No PDF file uploaded"}), 400
+            return jsonify({"error": "No PDF file uploaded."}), 400
 
-        file: FileStorage = request.files["pdf_file"]
+        pdf_file = request.files["pdf_file"]
+        if not pdf_file or pdf_file.filename == "":
+            return jsonify({"error": "Uploaded PDF file is invalid."}), 400
 
-        if file.filename == "":
-            return jsonify({"error": "Uploaded file has no filename"}), 400
-
-        # ----------------------------------------------------
-        # Extract user parameters
-        # ----------------------------------------------------
-        mode = request.form.get("mode", "pdf").strip().lower()
-        page_str = request.form.get("page", "").strip()
+        # ----------------------------------------
+        # Read mode and page from the form
+        # ----------------------------------------
+        mode = (request.form.get("mode") or "pdf").strip().lower()
+        page_str = (request.form.get("page") or "").strip()
 
         if not page_str.isdigit():
-            return jsonify({"error": "Page must be a number"}), 400
+            return jsonify({"error": "Page must be a positive integer."}), 400
 
         page_num = int(page_str)
+        if page_num < 1:
+            return jsonify({"error": "Page must be ≥ 1."}), 400
 
-        # ----------------------------------------------------
-        # Apply printed → PDF page conversion (Massachusetts only)
-        # ----------------------------------------------------
+        # ----------------------------------------
+        # Convert printed → PDF if needed
+        # ----------------------------------------
         if mode == "printed":
-            pdf_page = page_num + MASSACHUSETTS_OFFSET
+            try:
+                pdf_page_1_based = resolve_pdf_page(page_num)
+            except ValueError as ve:
+                return jsonify({"error": str(ve)}), 400
         else:
-            pdf_page = page_num
+            pdf_page_1_based = page_num
 
-        # PDF pages in PyMuPDF are 0-indexed, users give 1-indexed
-        pdf_page -= 1
+        # PyMuPDF uses 0-based indexing for pages
+        pdf_page_index = pdf_page_1_based - 1
+        if pdf_page_index < 0:
+            return jsonify({"error": "Resolved PDF page is invalid (< 1)."}), 400
 
-        if pdf_page < 0:
-            return jsonify({"error": "Page numbers must be ≥ 1"}), 400
-
-        # ----------------------------------------------------
-        # Save uploaded file to a temporary file
-        # ----------------------------------------------------
+        # ----------------------------------------
+        # Save uploaded file to a temporary path
+        # ----------------------------------------
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            file.save(tmp.name)
             temp_path = tmp.name
+            pdf_file.save(temp_path)
 
-        # ----------------------------------------------------
-        # Extract text from the PDF page
-        # ----------------------------------------------------
+        # ----------------------------------------
+        # Extract text from the requested page
+        # ----------------------------------------
         try:
-            text = extract_text_from_pdf(temp_path, pdf_page, pdf_page)
+            # We extract just that one page: start == end
+            text = extract_text_from_pdf(temp_path, pdf_page_index, pdf_page_index)
         finally:
-            # Always clean up the temp file
+            # Always try to clean up the temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
-        # ----------------------------------------------------
-        # Success
-        # ----------------------------------------------------
         return jsonify({"text": text})
 
     except Exception as e:
