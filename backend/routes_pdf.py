@@ -18,8 +18,8 @@ pdf_bp = Blueprint("pdf_bp", __name__)
 # ------------------------------------------------------------
 
 CHAPTER_PAGE_MAP: Dict[str, Dict[str, Any]] = {
-    "Maine": {"printed_start": None, "pdf_start": None},
-    "New Hampshire": {"printed_start": None, "pdf_start": None},
+    "Maine": {"printed_start": 9, "pdf_start": 25},
+    "New Hampshire": {"printed_start": 52, "pdf_start": 68},
     "Vermont": {"printed_start": None, "pdf_start": None},
     "Massachusetts": {"printed_start": 77, "pdf_start": 93},
     "Rhode Island": {"printed_start": None, "pdf_start": None},
@@ -79,90 +79,92 @@ def resolve_pdf_page(printed_page: int) -> int:
 @pdf_bp.route("/extract_pdf", methods=["POST"])
 def extract_pdf():
     """
-    Handle PDF upload + page selection and return *parsed rows*.
-    
-    Form fields:
-      - pdf_file: uploaded PDF
-      - mode: "pdf" or "printed"
-      - page: page number
-      - state: which parser to use (e.g. "massachusetts", "virginia", etc.)
+    Extract text from a PDF page, run the parser, and return a downloadable CSV.
     """
+    import csv
+    from io import StringIO
+    from flask import Response
+
     try:
         # ----------------------------------------
-        # Validate upload
+        # Validate PDF upload
         # ----------------------------------------
         if "pdf_file" not in request.files:
-            return jsonify({"error": "No PDF file uploaded."}), 400
+            return jsonify({"error": "No PDF uploaded"}), 400
 
         pdf_file = request.files["pdf_file"]
-        if not pdf_file or pdf_file.filename == "":
-            return jsonify({"error": "Uploaded PDF file is invalid."}), 400
 
-        # ----------------------------------------
-        # Get form fields
-        # ----------------------------------------
-        mode = (request.form.get("mode") or "pdf").strip().lower()
+        filename = getattr(pdf_file, "filename", None)
+        if not filename or not str(filename).lower().endswith(".pdf"):
+            return jsonify({"error": "Invalid PDF file"}), 400
+
+
+
+        # ----------------------------
+        # Read form fields
+        # ----------------------------
+        mode = (request.form.get("mode") or "pdf").lower()
+        state = (request.form.get("state") or "").strip()
         page_str = (request.form.get("page") or "").strip()
-        state = (request.form.get("state") or "").strip().lower()
 
         if not page_str.isdigit():
-            return jsonify({"error": "Page must be a positive integer."}), 400
+            return jsonify({"error": "Page must be a positive integer"}), 400
 
         page_num = int(page_str)
-        if page_num < 1:
-            return jsonify({"error": "Page must be ≥ 1."}), 400
 
-        # ----------------------------------------
-        # Convert printed → PDF if needed
-        # ----------------------------------------
+        # ----------------------------
+        # Resolve printed → PDF mapping
+        # ----------------------------
         if mode == "printed":
-            try:
-                pdf_page_1_based = resolve_pdf_page(page_num)
-            except ValueError as ve:
-                return jsonify({"error": str(ve)}), 400
+            pdf_page_1 = resolve_pdf_page(page_num)
         else:
-            pdf_page_1_based = page_num
+            pdf_page_1 = page_num
 
-        pdf_page_index = pdf_page_1_based - 1
+        pdf_page_idx = pdf_page_1 - 1
 
-        # ----------------------------------------
-        # Save PDF to temp file
-        # ----------------------------------------
+        # ----------------------------
+        # Save temp PDF and extract page
+        # ----------------------------
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             temp_path = tmp.name
             pdf_file.save(temp_path)
 
-        # ----------------------------------------
-        # Extract text from that ONE page
-        # ----------------------------------------
         try:
-            extracted = extract_text_from_pdf(temp_path, pdf_page_index, pdf_page_index)
+            extracted_text = extract_text_from_pdf(temp_path, pdf_page_idx, pdf_page_idx)
         finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            os.remove(temp_path)
 
-        if not extracted.strip():
-            return jsonify({"error": "The selected page contains no text."}), 400
+        # ----------------------------
+        # Run the parser (returns list of lists)
+        # ----------------------------
+        parsed_rows = run_parser(extracted_text, state)
 
-        # ----------------------------------------
-        # RUN THE TEXT THROUGH YOUR PARSER
-        # ----------------------------------------
-        try:
-            parsed_rows = run_parser(extracted, state)
-        except Exception as e:
-            current_app.logger.exception("Parser crashed")
-            return jsonify({"error": f"Parser error: {e}"}), 500
+        # ----------------------------
+        # Build CSV (pipe-delimited)
+        # ----------------------------
+        output = StringIO()
+        writer = csv.writer(output, delimiter="|", lineterminator="\n")
 
-        # ----------------------------------------
-        # Return parsed rows
-        # ----------------------------------------
-        return jsonify({
-            "page_requested": page_num,
-            "pdf_page_used": pdf_page_1_based,
-            "state": state,
-            "results": parsed_rows
-        })
+        for row in parsed_rows:
+            writer.writerow(row)
+
+        csv_content = output.getvalue()
+
+        # ----------------------------
+        # Build downloadable response
+        # ----------------------------
+        filename = f"{state or 'parsed'}_page_{page_num}.csv"
+        response = Response(
+            csv_content,
+            mimetype="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+        return response
 
     except Exception as e:
-        current_app.logger.exception("Unexpected PDF extraction failure")
+        current_app.logger.exception("PDF parsing failed")
         return jsonify({"error": str(e)}), 500
+
