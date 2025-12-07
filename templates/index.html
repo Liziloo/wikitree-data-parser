@@ -137,13 +137,12 @@
         <h2>Extract Text From DAR PDF</h2>
 
         <form id="pdfForm" action="/extract_pdf" method="POST" enctype="multipart/form-data">
-
-
+        
             <div class="section">
                 <label for="pdf_file">Upload PDF File:</label>
                 <input type="file" id="pdf_file" name="pdf_file" accept="application/pdf" required />
             </div>
-
+        
             <div class="section">
                 <label>Page Number Type:</label>
                 <div class="radio-group">
@@ -151,17 +150,20 @@
                     <label><input type="radio" name="mode" value="printed" /> Printed Page</label>
                 </div>
             </div>
-
+        
             <div class="section">
-                <label for="page">Page Number:</label>
-                <input type="number" id="page" name="page" min="1" required />
+                <label for="page">Page Number(s):</label>
+                <input type="text" id="page" name="page" required placeholder="e.g. 414 or 414-416 or 414,416-418" />
+        
                 <small style="color: var(--charcoal-blue);">
-                    For printed-page mode, only Massachusetts is mapped (printed + 16 = PDF).
+                    You may enter a single page or a range (e.g., 414-416).
+                    Printed-page mode currently uses: printed + 16 = PDF.
                 </small>
             </div>
-
+        
             <button type="submit">Extract Text + Download CSV</button>
         </form>
+
 
         <div id="result-container">
             <h3>Extracted Text:</h3>
