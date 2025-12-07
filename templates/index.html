@@ -1,64 +1,201 @@
-<!-- templates/index.html -->
-
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Liz’s Fantasmagorical Wikitree Record Parser</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css" />
+
+    <style>
+        /* Injecting your brand colors directly as CSS variables */
+        :root {
+            --amber-flame: #fcb815ff;
+            --medium-jungle: #58ab58ff;
+            --prussian-blue: #011936ff;
+            --charcoal-blue: #465362ff;
+            --dark-spruce: #285238ff;
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            background: white;
+            color: var(--prussian-blue);
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: var(--dark-spruce);
+            color: white;
+            padding: 1.5rem 2rem;
+            text-align: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2rem;
+        }
+
+        header p {
+            margin-top: 0.5rem;
+            font-style: italic;
+            color: var(--amber-flame);
+        }
+
+        main {
+            max-width: 900px;
+            margin: 2rem auto;
+            background: #ffffff;
+            padding: 2rem;
+            border-radius: 12px;
+            border: 2px solid var(--charcoal-blue);
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--dark-spruce);
+        }
+
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 1rem;
+        }
+
+        input[type="file"],
+        input[type="number"],
+        select {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            font-size: 1rem;
+            width: 100%;
+            border: 2px solid var(--charcoal-blue);
+            border-radius: 6px;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .radio-group label {
+            font-weight: normal;
+        }
+
+        button {
+            margin-top: 1.5rem;
+            background: var(--medium-jungle);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.8rem;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: var(--dark-spruce);
+        }
+
+        #result-container {
+            margin-top: 2rem;
+            padding: 1rem;
+            border: 2px solid var(--charcoal-blue);
+            border-radius: 8px;
+            display: none;
+        }
+
+        #result-text {
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 1rem;
+            color: var(--prussian-blue);
+        }
+
+        footer {
+            text-align: center;
+            padding: 1rem;
+            color: var(--charcoal-blue);
+            margin-top: 3rem;
+        }
+    </style>
 </head>
 
 <body>
 
-    <h1>Liz’s Fantasmagorical Wikitree Record Parser</h1>
-    <p class="tagline">Because life is too short for inconsistent muster rolls.</p>
+    <header>
+        <h1>Liz’s Fantasmagorical Wikitree Record Parser</h1>
+        <p>Because life is too short for inconsistent muster rolls.</p>
+    </header>
 
-    <div class="card">
+    <main>
+        <h2>Extract Text From DAR PDF</h2>
 
-        <h2>Extract Page Text From DAR PDF</h2>
+        <form id="pdf-form" enctype="multipart/form-data">
 
-        <form id="pdfForm" enctype="multipart/form-data">
+            <div class="section">
+                <label for="pdf_file">Upload PDF File:</label>
+                <input type="file" id="pdf_file" name="pdf_file" accept="application/pdf" required />
+            </div>
 
-            <label for="state">Select State Section:</label>
-            <select name="state" id="state">
-                <option value="Massachusetts">Massachusetts</option>
-                <option value="Maine">Maine</option>
-                <option value="Pennsylvania">Pennsylvania</option>
-                <option value="Virginia">Virginia</option>
-                <option value="Other">Other</option>
-            </select>
+            <div class="section">
+                <label>Page Number Type:</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="mode" value="pdf" checked /> PDF Page</label>
+                    <label><input type="radio" name="mode" value="printed" /> Printed Page</label>
+                </div>
+            </div>
 
-            <label for="page">
-                Page Number
-                <span class="note">(Enter printed page number for Massachusetts; PDF page for all others.)</span>
-            </label>
-            <input type="text" name="page" id="page" required>
-
-            <label for="pdf_file">Upload DAR PDF:</label>
-            <input type="file" name="pdf_file" id="pdf_file" accept="application/pdf" required>
+            <div class="section">
+                <label for="page">Page Number:</label>
+                <input type="number" id="page" name="page" min="1" required />
+                <small style="color: var(--charcoal-blue);">
+                    For printed-page mode, only Massachusetts is mapped (printed + 16 = PDF).
+                </small>
+            </div>
 
             <button type="submit">Extract Text</button>
         </form>
 
-        <pre id="pdfResult"></pre>
-    </div>
+        <div id="result-container">
+            <h3>Extracted Text:</h3>
+            <pre id="result-text"></pre>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Liz’s Fantasmagorical Parser — Powered by Jeeves.</p>
+    </footer>
 
     <script>
-        document.getElementById("pdfForm").addEventListener("submit", async (e) => {
-            e.preventDefault();
+        document.getElementById("pdf-form").addEventListener("submit", async (evt) => {
+            evt.preventDefault();
 
-            const form = e.target;
-            const data = new FormData(form);
+            const form = evt.target;
+            const formData = new FormData(form);
 
-            const response = await fetch("/api/pdf_extract", {
+            const response = await fetch("/extract_pdf", {
                 method: "POST",
-                body: data
+                body: formData
             });
 
-            const result = await response.json();
-            document.getElementById("pdfResult").textContent =
-                JSON.stringify(result, null, 2);
+            const data = await response.json();
+
+            const container = document.getElementById("result-container");
+            const textBox = document.getElementById("result-text");
+
+            if (data.error) {
+                container.style.display = "block";
+                textBox.textContent = "ERROR: " + data.error;
+            } else {
+                container.style.display = "block";
+                textBox.textContent = data.text || "(No text extracted)";
+            }
         });
     </script>
 
