@@ -398,6 +398,15 @@ def main():
         print(f"{fname:30} → {count:5} rows → {outpath}")
     print(f"\nLog written to: {log_path}\n")
 
+def parse_text(text: str):
+    """
+    Wrapper used by the web UI.
+    Accepts raw text, returns parsed rows (list of lists).
+    """
+    log_list = []
+    rows = process_text(text, filename="web_input.txt", log_list=log_list)
+    return rows
+
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,7 @@ from typing import Dict, Any
 from flask import Blueprint, request, jsonify, current_app
 
 from .pdf_to_text import extract_text_from_pdf
+from .routes_process import run_parser   # <<< NEW: use your normal text parser
 
 # ------------------------------------------------------------
 # Blueprint
@@ -15,102 +16,35 @@ pdf_bp = Blueprint("pdf_bp", __name__)
 # ------------------------------------------------------------
 # PRINTED → PDF PAGE MAPPING (YOU FILL THE NUMBERS)
 # ------------------------------------------------------------
-# For each section, set:
-#   "printed_start": the printed page number where that section begins
-#   "pdf_start":      the PDF page number where that same page appears
-#
-# Example (for Massachusetts, if you wish to pre-fill it):
-#   "Massachusetts": { "printed_start": 77, "pdf_start": 93 }
-#
-# Once these are set, resolve_pdf_page() will convert any printed page
-# to the correct PDF page automatically.
 
 CHAPTER_PAGE_MAP: Dict[str, Dict[str, Any]] = {
-    "Maine": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "New Hampshire": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Vermont": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Massachusetts": {
-        "printed_start": 77,  # e.g. 77
-        "pdf_start": 93,      # e.g. 93
-    },
-    "Rhode Island": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Connecticut": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "New York": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "New Jersey": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Pennsylvania": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Delaware": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Maryland": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Virginia": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "North Carolina": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "South Carolina": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "Georgia": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-    "The Old Northwest": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
+    "Maine": {"printed_start": None, "pdf_start": None},
+    "New Hampshire": {"printed_start": None, "pdf_start": None},
+    "Vermont": {"printed_start": None, "pdf_start": None},
+    "Massachusetts": {"printed_start": 77, "pdf_start": 93},
+    "Rhode Island": {"printed_start": None, "pdf_start": None},
+    "Connecticut": {"printed_start": None, "pdf_start": None},
+    "New York": {"printed_start": None, "pdf_start": None},
+    "New Jersey": {"printed_start": None, "pdf_start": None},
+    "Pennsylvania": {"printed_start": None, "pdf_start": None},
+    "Delaware": {"printed_start": None, "pdf_start": None},
+    "Maryland": {"printed_start": None, "pdf_start": None},
+    "Virginia": {"printed_start": None, "pdf_start": None},
+    "North Carolina": {"printed_start": None, "pdf_start": None},
+    "South Carolina": {"printed_start": None, "pdf_start": None},
+    "Georgia": {"printed_start": None, "pdf_start": None},
+    "The Old Northwest": {"printed_start": None, "pdf_start": None},
     "Miscellaneous Naval and Military Records": {
         "printed_start": None,
         "pdf_start": None,
     },
 }
 
-
 def resolve_pdf_page(printed_page: int) -> int:
     """
     Convert a printed page number from the book into a PDF page number,
     using CHAPTER_PAGE_MAP.
-
-    Rules:
-    - Only sections with both printed_start and pdf_start set are considered.
-    - Among those, we pick the section whose printed_start is the greatest
-      value <= the requested printed_page.
-    - That section defines the offset:
-        offset = pdf_start - printed_start
-        pdf_page = printed_page + offset
     """
-    # Collect only configured chapters
     configured = [
         (name, info)
         for name, info in CHAPTER_PAGE_MAP.items()
@@ -120,7 +54,6 @@ def resolve_pdf_page(printed_page: int) -> int:
     if not configured:
         raise ValueError("No chapter mappings have been configured yet.")
 
-    # Filter to chapters whose printed_start <= printed_page
     candidates = [
         (name, info)
         for name, info in configured
@@ -130,7 +63,6 @@ def resolve_pdf_page(printed_page: int) -> int:
     if not candidates:
         raise ValueError("Printed page is before the first configured chapter.")
 
-    # Choose the chapter with the largest printed_start that is <= printed_page
     chapter_name, info = max(candidates, key=lambda item: item[1]["printed_start"])
 
     printed_start = info["printed_start"]
@@ -147,21 +79,17 @@ def resolve_pdf_page(printed_page: int) -> int:
 @pdf_bp.route("/extract_pdf", methods=["POST"])
 def extract_pdf():
     """
-    Handle PDF upload + page selection and return extracted text.
-
-    Form fields expected:
-      - pdf_file: uploaded PDF file
+    Handle PDF upload + page selection and return *parsed rows*.
+    
+    Form fields:
+      - pdf_file: uploaded PDF
       - mode: "pdf" or "printed"
-      - page: page number (int)
-
-    Logic:
-      - If mode == "pdf": treat `page` as a PDF page number (1-based)
-      - If mode == "printed": treat `page` as a printed page number and
-                              convert using resolve_pdf_page()
+      - page: page number
+      - state: which parser to use (e.g. "massachusetts", "virginia", etc.)
     """
     try:
         # ----------------------------------------
-        # Validate and fetch the uploaded PDF
+        # Validate upload
         # ----------------------------------------
         if "pdf_file" not in request.files:
             return jsonify({"error": "No PDF file uploaded."}), 400
@@ -171,10 +99,11 @@ def extract_pdf():
             return jsonify({"error": "Uploaded PDF file is invalid."}), 400
 
         # ----------------------------------------
-        # Read mode and page from the form
+        # Get form fields
         # ----------------------------------------
         mode = (request.form.get("mode") or "pdf").strip().lower()
         page_str = (request.form.get("page") or "").strip()
+        state = (request.form.get("state") or "").strip().lower()
 
         if not page_str.isdigit():
             return jsonify({"error": "Page must be a positive integer."}), 400
@@ -194,31 +123,46 @@ def extract_pdf():
         else:
             pdf_page_1_based = page_num
 
-        # PyMuPDF uses 0-based indexing for pages
         pdf_page_index = pdf_page_1_based - 1
-        if pdf_page_index < 0:
-            return jsonify({"error": "Resolved PDF page is invalid (< 1)."}), 400
 
         # ----------------------------------------
-        # Save uploaded file to a temporary path
+        # Save PDF to temp file
         # ----------------------------------------
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             temp_path = tmp.name
             pdf_file.save(temp_path)
 
         # ----------------------------------------
-        # Extract text from the requested page
+        # Extract text from that ONE page
         # ----------------------------------------
         try:
-            # We extract just that one page: start == end
-            text = extract_text_from_pdf(temp_path, pdf_page_index, pdf_page_index)
+            extracted = extract_text_from_pdf(temp_path, pdf_page_index, pdf_page_index)
         finally:
-            # Always try to clean up the temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
-        return jsonify({"text": text})
+        if not extracted.strip():
+            return jsonify({"error": "The selected page contains no text."}), 400
+
+        # ----------------------------------------
+        # RUN THE TEXT THROUGH YOUR PARSER
+        # ----------------------------------------
+        try:
+            parsed_rows = run_parser(extracted, state)
+        except Exception as e:
+            current_app.logger.exception("Parser crashed")
+            return jsonify({"error": f"Parser error: {e}"}), 500
+
+        # ----------------------------------------
+        # Return parsed rows
+        # ----------------------------------------
+        return jsonify({
+            "page_requested": page_num,
+            "pdf_page_used": pdf_page_1_based,
+            "state": state,
+            "results": parsed_rows
+        })
 
     except Exception as e:
-        current_app.logger.exception("PDF extraction failed")
+        current_app.logger.exception("Unexpected PDF extraction failure")
         return jsonify({"error": str(e)}), 500

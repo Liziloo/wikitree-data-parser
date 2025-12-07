@@ -8,6 +8,27 @@ import io
 
 process_bp = Blueprint("process_bp", __name__)
 
+from .parsers.original_parser import parse_text as parse_original
+from .parsers.virginia_parser import parse_text as parse_virginia
+
+
+def run_parser(text: str, state: str):
+    """
+    Dispatch to the appropriate parser based on the selected state.
+    More specialized parsers can be added over time.
+    """
+
+    # Normalize
+    state = (state or "").strip().lower()
+
+    # --- Special-case Virginia -------------------------------------------
+    if state == "virginia":
+        return parse_virginia(text)
+
+    # --- Default: general DAR-style parser --------------------------------
+    return parse_original(text)
+
+
 @process_bp.route("/process", methods=["POST"])
 def process_records():
     raw_text = request.form.get("raw_text", "")

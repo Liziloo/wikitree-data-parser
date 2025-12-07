@@ -319,6 +319,48 @@ def main():
     log.close()
     print(f"Processing complete. Log at {log_path}")
 
+def parse_text(text: str):
+    """
+    Wrapper used by the web UI.
+    Accepts raw text, splits into logical records using read_records_from_file logic,
+    and returns parsed rows.
+    """
+
+    # Simulate the record-splitting logic, but using text instead of a file.
+    raw_lines = text.splitlines()
+    records = []
+    current = []
+
+    for line in raw_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Skip page headers like "Virginia 509"
+        if PAGE_HEADER_PATTERN.match(stripped):
+            continue
+
+        if is_new_record_line(stripped):
+            if current:
+                records.append(" ".join(current).strip())
+            current = [stripped]
+        else:
+            if current:
+                current.append(stripped)
+            else:
+                current = [stripped]
+
+    if current:
+        records.append(" ".join(current).strip())
+
+    # Parse all records
+    rows = []
+    for rec in records:
+        row = parse_record(rec)
+        rows.append(row)
+
+    return rows
+
 
 if __name__ == "__main__":
     main()

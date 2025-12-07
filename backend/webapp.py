@@ -1,25 +1,23 @@
-from flask import Flask, render_template, request
-from backend.routes_pdf import pdf_bp
-from backend.routes_process import process_bp
+# backend/webapp.py
 
-def create_app():
-    app = Flask(
-        __name__,
-        template_folder="../templates",
-        static_folder="../static"
-    )
+from flask import Flask, render_template
+from .routes_pdf import pdf_bp
+from .routes_process import process_bp
 
-    # API routes
-    app.register_blueprint(pdf_bp, url_prefix="/api")
-    app.register_blueprint(process_bp, url_prefix="/")
+app = Flask(
+    __name__,
+    template_folder="../templates",
+    static_folder="../static"
+)
 
-    @app.route("/", methods=["GET"])
-    def index():
-        return render_template("index.html")
+# Register blueprints
+app.register_blueprint(pdf_bp)
+app.register_blueprint(process_bp)
 
-    return app
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 
 if __name__ == "__main__":
-    app = create_app()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)
