@@ -13,64 +13,7 @@ from .routes_process import run_parser   # <<< NEW: use your normal text parser
 
 pdf_bp = Blueprint("pdf_bp", __name__)
 
-# ------------------------------------------------------------
-# PRINTED → PDF PAGE MAPPING (YOU FILL THE NUMBERS)
-# ------------------------------------------------------------
-
-CHAPTER_PAGE_MAP: Dict[str, Dict[str, Any]] = {
-    "Maine": {"printed_start": 9, "pdf_start": 25},
-    "New Hampshire": {"printed_start": 52, "pdf_start": 68},
-    "Vermont": {"printed_start": None, "pdf_start": None},
-    "Massachusetts": {"printed_start": 77, "pdf_start": 93},
-    "Rhode Island": {"printed_start": None, "pdf_start": None},
-    "Connecticut": {"printed_start": None, "pdf_start": None},
-    "New York": {"printed_start": None, "pdf_start": None},
-    "New Jersey": {"printed_start": None, "pdf_start": None},
-    "Pennsylvania": {"printed_start": None, "pdf_start": None},
-    "Delaware": {"printed_start": None, "pdf_start": None},
-    "Maryland": {"printed_start": None, "pdf_start": None},
-    "Virginia": {"printed_start": None, "pdf_start": None},
-    "North Carolina": {"printed_start": None, "pdf_start": None},
-    "South Carolina": {"printed_start": None, "pdf_start": None},
-    "Georgia": {"printed_start": None, "pdf_start": None},
-    "The Old Northwest": {"printed_start": None, "pdf_start": None},
-    "Miscellaneous Naval and Military Records": {
-        "printed_start": None,
-        "pdf_start": None,
-    },
-}
-
-def resolve_pdf_page(printed_page: int) -> int:
-    """
-    Convert a printed page number from the book into a PDF page number,
-    using CHAPTER_PAGE_MAP.
-    """
-    configured = [
-        (name, info)
-        for name, info in CHAPTER_PAGE_MAP.items()
-        if info.get("printed_start") is not None and info.get("pdf_start") is not None
-    ]
-
-    if not configured:
-        raise ValueError("No chapter mappings have been configured yet.")
-
-    candidates = [
-        (name, info)
-        for name, info in configured
-        if printed_page >= info["printed_start"]
-    ]
-
-    if not candidates:
-        raise ValueError("Printed page is before the first configured chapter.")
-
-    chapter_name, info = max(candidates, key=lambda item: item[1]["printed_start"])
-
-    printed_start = info["printed_start"]
-    pdf_start = info["pdf_start"]
-
-    offset = pdf_start - printed_start
-    return printed_page + offset
-
+PRINTED_TO_PDF_OFFSET = 16
 
 # ------------------------------------------------------------
 # Route: /extract_pdf
@@ -110,17 +53,15 @@ def extract_pdf():
         if not page_str.isdigit():
             return jsonify({"error": "Page must be a positive integer"}), 400
 
-        page_num = int(page_str)
+        page_num = int(page_str) - 1
 
         # ----------------------------
         # Resolve printed → PDF mapping
         # ----------------------------
         if mode == "printed":
-            pdf_page_1 = resolve_pdf_page(page_num)
+            pdf_page_1 = page_num + PRINTED_TO_PDF_OFFSET
         else:
             pdf_page_1 = page_num
-
-        pdf_page_idx = pdf_page_1 - 1
 
         # ----------------------------
         # Save temp PDF and extract page
@@ -130,7 +71,7 @@ def extract_pdf():
             pdf_file.save(temp_path)
 
         try:
-            extracted_text = extract_text_from_pdf(temp_path, pdf_page_idx, pdf_page_idx)
+            extracted_text = extract_text_from_pdf(temp_path, pdf_page_1)
         finally:
             os.remove(temp_path)
 

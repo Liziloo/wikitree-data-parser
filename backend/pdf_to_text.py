@@ -7,43 +7,55 @@ import fitz  # PyMuPDF
 from pathlib import Path
 
 
-def extract_text_from_pdf(pdf_path: str | Path, start_page: int, end_page: int) -> str:
+import fitz  # PyMuPDF
+
+def extract_text_from_pdf(pdf_path, start_page, end_page=None):
     """
-    Extract raw text from a PDF between page numbers inclusive.
-    Page numbers are 1-indexed (human-friendly).
+    Extract text from a PDF.
+
+    Accepts:
+        - A single page number  (start_page=12, end_page=None)
+        - A page range          (start_page=12, end_page=15)
+
+    All page numbers are treated as *1-based* because this matches
+    the behavior we have verified empirically in your environment.
+
+    Returns a single concatenated text block.
     """
 
-    pdf_path = Path(pdf_path)
-    if not pdf_path.exists():
-        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+    # Normalize: if user provided only one page, treat as both start & end.
+    if end_page is None:
+        end_page = start_page
 
-    # Open PDF
+    # Convert to ints (request.form sends strings)
+    start_page = int(start_page)
+    end_page = int(end_page)
+
+    if start_page < 1 or end_page < 1:
+        raise ValueError("Page numbers must be ≥ 1.")
+
+    if end_page < start_page:
+        raise ValueError("End page cannot be before start page.")
+
     doc = fitz.open(pdf_path)
+    num_pages = doc.page_count
 
-    # Convert human page numbers → zero-based indices
-    start_idx = max(0, start_page - 1)
-    end_idx = min(len(doc) - 1, end_page - 1)
+    if start_page > num_pages or end_page > num_pages:
+        raise ValueError(
+            f"Requested page(s) outside PDF bounds. "
+            f"PDF has {num_pages} total pages."
+        )
 
-    if start_idx > end_idx:
-        doc.close()
-        raise ValueError(f"Invalid page range: {start_page}–{end_page}")
+    # IMPORTANT: We do *not* subtract 1. Your PyMuPDF behaves as 1-based.
+    extracted = []
 
-    text_chunks: list[str] = []
-
-    for page_num in range(start_idx, end_idx + 1):
+    for page_num in range(start_page, end_page + 1):
         page = doc.load_page(page_num)
-
-        # Use str() to guarantee a literal string and silence all type checkers
-        raw = str(page.get_text())
-
-        # Skip blank or whitespace-only pages
-        if raw.strip():
-            text_chunks.append(raw)
+        extracted.append(page.get_text())
 
     doc.close()
+    return "\n".join(extracted)
 
-    # Combine pages separated by a newline
-    return "\n".join(text_chunks)
 
 
 if __name__ == "__main__":
