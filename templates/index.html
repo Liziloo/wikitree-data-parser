@@ -1,0 +1,67 @@
+<!-- templates/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Liz’s Fantasmagorical Wikitree Record Parser</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <h1>Liz’s Fantasmagorical Wikitree Record Parser</h1>
+    <p class="tagline">Because life is too short for inconsistent muster rolls.</p>
+
+    <div class="card">
+
+        <h2>Extract Page Text From DAR PDF</h2>
+
+        <form id="pdfForm" enctype="multipart/form-data">
+
+            <label for="state">Select State Section:</label>
+            <select name="state" id="state">
+                <option value="Massachusetts">Massachusetts</option>
+                <option value="Maine">Maine</option>
+                <option value="Pennsylvania">Pennsylvania</option>
+                <option value="Virginia">Virginia</option>
+                <option value="Other">Other</option>
+            </select>
+
+            <label for="page">
+                Page Number
+                <span class="note">(Enter printed page number for Massachusetts; PDF page for all others.)</span>
+            </label>
+            <input type="text" name="page" id="page" required>
+
+            <label for="pdf_file">Upload DAR PDF:</label>
+            <input type="file" name="pdf_file" id="pdf_file" accept="application/pdf" required>
+
+            <button type="submit">Extract Text</button>
+        </form>
+
+        <pre id="pdfResult"></pre>
+    </div>
+
+    <script>
+        document.getElementById("pdfForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const form = e.target;
+            const data = new FormData(form);
+
+            const response = await fetch("/api/pdf_extract", {
+                method: "POST",
+                body: data
+            });
+
+            const result = await response.json();
+            document.getElementById("pdfResult").textContent =
+                JSON.stringify(result, null, 2);
+        });
+    </script>
+
+</body>
+
+</html>

@@ -8,40 +8,57 @@ The web UI is branded as:
 **Liz’s Fantasmagorical Wikitree Record Parser**  
 > Because life is too short for inconsistent muster rolls.
 
+---
+
 ## Features
 
-- General DAR-style text parser (`wikitree_data_parser/parsers/original_parser.py`)
-- Virginia-focused parser with ownership logic (`wikitree_data_parser/parsers/virginia_parser.py`)
-- Flask web UI (`wikitree_data_parser/backend/webapp.py`) with your color palette and branding
-- PDF text extraction helpers (`wikitree_data_parser/backend/pdf_to_text.py`)
+- General DAR-style text parser (`backend/parsers/original_parser.py`)
+- Virginia-focused parser with ownership logic (`backend/parsers/virginia_parser.py`)
+- Flask web UI (`backend/webapp.py`) with your color palette and branding
+- PDF text extraction helpers (`backend/pdf_to_text.py`)
 - Dockerfile + docker-compose for easy homelab deployment
 
-## Printed page → PDF page (DAR Forgotten Patriots, Pennsylvania)
+---
 
-On the DAR Forgotten Patriots PDF currently wired in:
+## PDF Page Logic
 
-- The printed header `Pennsylvania 414` appears on **PDF viewer page 245**.
+Different state sections do not correspond to consistent PDF page numbers.  
+As of now, only **Massachusetts** has a verified printed-page → PDF-page offset.
 
-In `wikitree_data_parser/backend/pdf_to_text.py` we therefore have:
-
-```python
-STATE_PAGE_MAP = {
-    "Pennsylvania": {
-        "pdf_start": 245,
-        "printed_start": 414,
-    }
-}
+### **Massachusetts Offset**
+```
+printed_page 77 → pdf_page 93  
+offset = +16
 ```
 
-When you type in the web UI:
+Therefore:
+```
+pdf_page = printed_page + 16
+```
 
-- State: `Pennsylvania`
-- Printed page: `414`
+All other states currently expect **raw PDF page numbers**.
 
-The backend translates that into PDF page `245` and extracts text from there.  
-You can extend `STATE_PAGE_MAP` with other states once you know their offsets.
+---
 
-## Local development (no Docker)
+## Running Locally
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+python backend/webapp.py
+```
+
+Open your browser at:
+
+```
+http://localhost:5000
+```
+
+---
+
+## Local Development (no Docker)
 
 1. Clone the repo:
 
@@ -50,11 +67,11 @@ You can extend `STATE_PAGE_MAP` with other states once you know their offsets.
    cd wikitree-data-parser
    ```
 
-2. Create and activate a virtualenv (optional but nice):
+2. Create and activate a virtualenv (optional):
 
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+   source .venv/bin/activate      # Windows: .venv\Scripts\activate
    ```
 
 3. Install dependencies:
@@ -66,10 +83,12 @@ You can extend `STATE_PAGE_MAP` with other states once you know their offsets.
 4. Run the web app:
 
    ```bash
-   python -m wikitree_data_parser.backend.webapp
+   python -m backend.webapp
    ```
 
-5. Open your browser at <http://localhost:5000>.
+5. Then go to: <http://localhost:5000>
+
+---
 
 ## Running with Docker (homelab-friendly)
 
@@ -81,40 +100,47 @@ docker compose up -d
 
 This will:
 
-- Build the image locally
-- Run the container named **wikitree-data-parser**
-- Expose it on port **5005** on the host
+- Build the image locally  
+- Run the container as **wikitree-data-parser**  
+- Expose the app on **port 5005** (host) → **5000** (container)
 
-In NGINX Proxy Manager, you can then:
+In **NGINX Proxy Manager**, point your Proxy Host:
 
-- Create a new Proxy Host for `wikitree.finnoak.com`
-- Point it to `http://wikitree-data-parser:5000`
-- Put Authelia in front for authentication as you do with your other services
+```
+wikitree.finnoak.com → http://wikitree-data-parser:5000
+```
 
-## Using the CLI parsers directly
+Put **Authelia** in front if desired.
 
-From the project root (with dependencies installed), you can call:
+---
+
+## Using the CLI Parsers Directly
 
 ```bash
 # General DAR-style parser
-python -m wikitree_data_parser.parsers.original_parser input.txt out_dir --psv
+python -m backend.parsers.original_parser input.txt output_dir --psv
 
 # Virginia-specific parser
-python -m wikitree_data_parser.parsers.virginia_parser input.txt out_dir --psv
+python -m backend.parsers.virginia_parser input.txt output_dir --psv
 ```
 
-The output will be `.csv` files with either pipe delimiters (`|`) or commas, depending on flags.
+Output files will be `.csv` using pipe (`|`) or comma delimiters, depending on options.
 
-## Source material
+---
 
-The original DAR volume you are parsing from is:
+## Source Material
+
+The DAR volume parsed by this tool:
 
 > Daughters of the American Revolution. *Forgotten Patriots: African American and American Indian Patriots in the Revolutionary War* (Washington, DC: DAR, 2008).
 
-Public DAR PDF link used during development:
+Public PDF:
 
-- https://www.dar.org/sites/default/files/media/library/DARpublications/Forgotten_Patriots_ISBN-978-1-892237-10-1.pdf
+https://www.dar.org/sites/default/files/media/library/DARpublications/Forgotten_Patriots_ISBN-978-1-892237-10-1.pdf
+
+---
 
 ## License
 
-MIT. Do cool things with it, share improvements, don’t sue anybody.
+MIT.  
+Do cool things with it, share improvements, don’t sue an
