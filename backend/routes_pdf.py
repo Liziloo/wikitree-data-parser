@@ -15,6 +15,40 @@ pdf_bp = Blueprint("pdf_bp", __name__)
 
 PRINTED_TO_PDF_OFFSET = 16
 
+def parse_page_expression(expr: str) -> list[int]:
+    """
+    Parse user input like:
+        '414'
+        '414-416'
+        '414,420-421'
+    And return a sorted list of unique integers.
+    """
+    pages = set()
+    parts = [p.strip() for p in expr.split(",") if p.strip()]
+
+    for part in parts:
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            if start_s.isdigit() and end_s.isdigit():
+                start, end = int(start_s), int(end_s)
+                if start <= end:
+                    pages.update(range(start, end + 1))
+                else:
+                    raise ValueError(f"Invalid range: {part}")
+            else:
+                raise ValueError(f"Invalid range expression: {part}")
+        else:
+            if part.isdigit():
+                pages.add(int(part))
+            else:
+                raise ValueError(f"Invalid page number: {part}")
+
+    if not pages:
+        raise ValueError("No valid pages found.")
+
+    return sorted(pages)
+
+
 # ------------------------------------------------------------
 # Route: /extract_pdf
 # ------------------------------------------------------------
