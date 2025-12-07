@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  wikitree-data-parser:
+    build: .
+    container_name: wikitree-data-parser
+    restart: unless-stopped
+    ports:
+      - "5005:5000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Behind NGINX Proxy Manager + Authelia, you'd typically:
+    # - Point NPM at http://wikitree-data-parser:5000
+    # - Protect the hostname (e.g. wikitree.finnoak.com) with Authelia

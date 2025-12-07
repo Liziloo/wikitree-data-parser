@@ -1,0 +1,26 @@
+{
+  "columns": [
+    {
+      "name": "Wiki-ID of Member Working"
+    },
+    {
+      "name": "Wiki-ID"
+    },
+    {
+      "name": "Surname"
+    },
+    {
+      "name": "First Name"
+    },
+    {
+      "name": "Race / Notes"
+    },
+    {
+      "name": "Source"
+    },
+    {
+      "name": "Source Notes"
+    }
+  ],
+  "separator": "|"
+}
