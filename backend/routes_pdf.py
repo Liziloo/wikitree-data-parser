@@ -53,6 +53,31 @@ def parse_page_expression(expr: str) -> list[int]:
 # Route: /extract_pdf
 # ------------------------------------------------------------
 
+def parse_page_range(s: str):
+    """
+    Accept '10', '10-12', '10 – 12', '10 - 12'
+    Returns (start, end)
+    """
+    s = s.strip().replace("–", "-")
+    if "-" not in s:
+        page = int(s)
+        if page < 1:
+            raise ValueError("Page must be >= 1")
+        return page, page
+
+    parts = s.split("-")
+    if len(parts) != 2:
+        raise ValueError("Invalid page range format")
+
+    start = int(parts[0].strip())
+    end = int(parts[1].strip())
+
+    if start < 1 or end < 1 or end < start:
+        raise ValueError("Invalid page range boundaries")
+
+    return start, end
+
+
 @pdf_bp.route("/extract_pdf", methods=["POST"])
 def extract_pdf():
     """
@@ -84,18 +109,26 @@ def extract_pdf():
         state = (request.form.get("state") or "").strip()
         page_str = (request.form.get("page") or "").strip()
 
-        if not page_str.isdigit():
-            return jsonify({"error": "Page must be a positive integer"}), 400
+        try:
+            printed_start, printed_end = parse_page_range(page_str)
+        except Exception as e:
+            return jsonify({"error": f"Invalid page or range: {e}"}), 400
 
-        page_num = int(page_str) - 1
 
         # ----------------------------
         # Resolve printed → PDF mapping
         # ----------------------------
         if mode == "printed":
-            pdf_page_1 = page_num + PRINTED_TO_PDF_OFFSET
+            pdf_start = printed_start + PRINTED_TO_PDF_OFFSET
+            pdf_end   = printed_end   + PRINTED_TO_PDF_OFFSET
         else:
-            pdf_page_1 = page_num
+            pdf_start = printed_start
+            pdf_end   = printed_end
+
+        # convert to zero-based
+        pdf_start_idx = pdf_start - 1
+        pdf_end_idx   = pdf_end - 1
+
 
         # ----------------------------
         # Save temp PDF and extract page
@@ -105,7 +138,8 @@ def extract_pdf():
             pdf_file.save(temp_path)
 
         try:
-            extracted_text = extract_text_from_pdf(temp_path, pdf_page_1)
+            extracted_text = extract_text_from_pdf(temp_path, pdf_start_idx, pdf_end_idx)
+
         finally:
             os.remove(temp_path)
 
@@ -129,7 +163,13 @@ def extract_pdf():
         # ----------------------------
         # Build downloadable response
         # ----------------------------
-        filename = f"{state or 'parsed'}_page_{page_num}.csv"
+        if printed_start == printed_end:
+            page_label = f"page_{printed_start}"
+        else:
+            page_label = f"pages_{printed_start}-{printed_end}"
+
+        filename = f"{(state or 'parsed')}_{page_label}.csv"
+
         response = Response(
             csv_content,
             mimetype="text/csv",
