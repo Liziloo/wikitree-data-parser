@@ -18,16 +18,15 @@ process_bp = Blueprint("process_bp", __name__)
 # Core parser dispatcher
 # ------------------------------------------------------------
 
-def run_parser(text: str, state: str):
+def run_parser(text: str, virginia_mode: bool):
     """
-    Dispatch to the appropriate parser based on the selected state.
+    Dispatch to the appropriate parser based on the 'Virginia-style' flag.
 
-    `state` is a loose hint (e.g. "virginia", "massachusetts", etc.).
-    For now we special-case Virginia; everything else uses the general parser.
+    If virginia_mode is True, we use the Virginia parser (for lists with
+    unnamed entries like 'AFRICAN AMERICAN MAN', 'NEGRO MAN', etc.).
+    Otherwise, we use the general DAR-style parser.
     """
-    state_norm = (state or "").strip().lower()
-
-    if state_norm == "virginia":
+    if virginia_mode:
         return parse_virginia(text)
 
     # Default: general DAR-style parser
@@ -45,19 +44,19 @@ def process_text_route():
 
     Expected form fields:
       - raw_text: the full DAR-style list text
-      - state: optional hint like "virginia", "massachusetts", etc.
+      - virginia_mode: checkbox ('on' if checked) indicating Virginia-style data
 
     Returns JSON with parsed rows.
     """
     raw_text = (request.form.get("raw_text") or "").strip()
-    state = (request.form.get("state") or "").strip()
+    virginia_mode = request.form.get("virginia_mode") == "on"
 
     if not raw_text:
         return jsonify({"error": "No text provided."}), 400
 
     try:
-        rows = run_parser(raw_text, state)
+        rows = run_parser(raw_text, virginia_mode)
     except Exception as e:
         return jsonify({"error": f"Parser error: {e}"}), 500
 
-    return jsonify({"state": state, "results": rows})
+    return jsonify({"virginia_mode": virginia_mode, "results": rows})

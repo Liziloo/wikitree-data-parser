@@ -112,7 +112,8 @@ def extract_pdf():
         # ----------------------------
         # Run the parser (returns list of lists)
         # ----------------------------
-        parsed_rows = run_parser(extracted_text, state)
+        virginia_mode = request.form.get("virginia_mode") == "on"
+        parsed_rows = run_parser(extracted_text, virginia_mode)
 
         # ----------------------------
         # Build CSV (pipe-delimited)
